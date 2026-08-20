@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px;
+         background: #2b2b2b; color: #d4d4d4; margin: 0; padding: 0; }
+  .tab-bar { display: flex; background: #1e1e1e; border-bottom: 2px solid #444; }
+  .tab { flex: 1; padding: 8px 4px; text-align: center; cursor: pointer;
+         font-size: 12px; color: #aaa; border-bottom: 2px solid transparent;
+         margin-bottom: -2px; user-select: none; }
+  .tab:hover { color: #d4d4d4; }
+  .tab.active { color: #fff; border-bottom: 2px solid #0d6efd; font-weight: 600; }
+  .panel { display: none; padding: 10px; }
+  .panel.active { display: block; }
+  label { font-size: 12px; color: #aaa; }
+  input[type=number] { width: 65px; background: #3c3c3c; border: 1px solid #555;
+                       color: #d4d4d4; padding: 3px 6px; border-radius: 3px; }
+  select { background: #3c3c3c; border: 1px solid #555; color: #d4d4d4;
+           padding: 3px 4px; border-radius: 3px; font-size: 12px; }
+  .row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  button { background: #0d6efd; color: #fff; border: none; padding: 5px 12px;
+           border-radius: 4px; cursor: pointer; font-size: 12px; }
+  button:hover    { background: #0b5ed7; }
+  button:disabled { background: #555; color: #888; cursor: default; }
+  .btn-scan        { background: #198754; }
+  .btn-scan:hover  { background: #157347; }
+  .btn-purple      { background: #6f42c1; }
+  .btn-purple:hover { background: #5a32a3; }
+  .btn-row { display: flex; gap: 6px; margin-top: 4px; }
+  .btn-row button { flex: 1; padding: 7px; font-size: 12px; }
+  .item { padding: 6px 8px; margin-bottom: 4px; background: #3a3a3a;
+          border-radius: 4px; cursor: pointer; border: 1px solid transparent; user-select: none; }
+  .item:hover    { background: #444; }
+  .item.selected { border-color: #0d6efd; background: #1a3a5c; }
+  .status { margin-top: 8px; font-size: 11px; color: #888; min-height: 16px; }
+  .chk-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+  .chk-row input[type=checkbox] { width: 14px; height: 14px; cursor: pointer; accent-color: #0d6efd; }
+  .chk-row label { font-size: 12px; color: #aaa; cursor: pointer; }
+  .divider { border: none; border-top: 1px solid #444; margin: 8px 0; }
+</style>
+</head>
+<body>
+<div class="tab-bar">
+  <div class="tab active" id="tab-gaps" onclick="switchTab(this,'panel-gaps')">Gap Finder</div>
+  <div class="tab" id="tab-overlaps" onclick="switchTab(this,'panel-overlaps')">Overlaps</div>
+  <div class="tab" id="tab-small" onclick="switchTab(this,'panel-small')">Small Curves</div>
+</div>
+<div class="panel active" id="panel-gaps">
+  <div class="row">
+    <label>Tolerance</label>
+    <input type="number" id="tolVal" value="0.1" min="0" step="any">
+    <select id="tolUnit" onchange="tolUnitDirty=true">
+      <option value="mm">mm</option><option value="cm">cm</option>
+      <option value="m">m</option><option value="in">in</option>
+      <option value="ft">ft</option><option value="mil">mil</option>
+    </select>
+    <button class="btn-scan" onclick="scan()">Find Gaps</button>
+  </div>
+  <div class="chk-row">
+    <input type="checkbox" id="showMarkers" checked onchange="toggleMarkers()">
+    <label for="showMarkers">Show markers</label>
+  </div>
+  <div id="gapList"></div>
+  <div class="status" id="gapStatus"></div>
+  <hr class="divider">
+  <div class="btn-row">
+    <button id="fixCoincidentBtn" disabled onclick="fixCoincident()">Coincident Constraint</button>
+    <button id="fixLineBtn" disabled onclick="fixLine()" class="btn-purple">Bridge with Line</button>
+  </div>
+  <div class="btn-row" style="margin-top:4px;">
+    <button id="fixAllCoincidentBtn" disabled onclick="fixAll('fix_all_coincident')">Fix All: Coincident</button>
+    <button id="fixAllLineBtn" disabled onclick="fixAll('fix_all_line')" class="btn-purple">Fix All: Lines</button>
+  </div>
+</div>
+<div class="panel" id="panel-overlaps">
+  <div class="row">
+    <button class="btn-scan" onclick="scanOverlaps()">Find Overlaps</button>
+  </div>
+  <div id="overlapList"></div>
+  <div class="status" id="overlapStatus"></div>
+</div>
+<div class="panel" id="panel-small">
+  <div class="row">
+    <label>Max length</label>
+    <input type="number" id="smallVal" value="0.01" min="0" step="any">
+    <select id="smallUnit" onchange="smallUnitDirty=true">
+      <option value="mm">mm</option><option value="cm">cm</option>
+      <option value="m">m</option><option value="in">in</option>
+      <option value="ft">ft</option><option value="mil">mil</option>
+    </select>
+    <button class="btn-scan" onclick="scanSmall()">Find Small Curves</button>
+  </div>
+  <div id="smallList"></div>
+  <div class="status" id="smallStatus"></div>
+</div>
+<script>
+var gaps=[], selectedIdx=-1, tolUnitDirty=false, smallUnitDirty=false;
+function switchTab(tab,panelId){
+  document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active');});
+  document.querySelectorAll('.panel').forEach(function(p){p.classList.remove('active');});
+  tab.classList.add('active'); document.getElementById(panelId).classList.add('active');
+}
+function setGapStatus(msg,isErr){var e=document.getElementById('gapStatus');e.textContent=msg;e.style.color=isErr?'#f87171':'#888';}
+function setOvlStatus(msg,isErr){var e=document.getElementById('overlapStatus');e.textContent=msg;e.style.color=isErr?'#f87171':'#888';}
+function setSmallStatus(msg,isErr){var e=document.getElementById('smallStatus');e.textContent=msg;e.style.color=isErr?'#f87171':'#888';}
+function showMarkers(){return document.getElementById('showMarkers').checked;}
+function setFixBtns(d){document.getElementById('fixCoincidentBtn').disabled=d;document.getElementById('fixLineBtn').disabled=d;}
+function setFixAllBtns(d){document.getElementById('fixAllCoincidentBtn').disabled=d;document.getElementById('fixAllLineBtn').disabled=d;}
+function setDefaultUnit(id,unit){var s=document.getElementById(id);for(var i=0;i<s.options.length;i++){if(s.options[i].value===unit){s.selectedIndex=i;break;}}}
+function renderGaps(){
+  var list=document.getElementById('gapList');list.innerHTML='';
+  if(gaps.length===0){list.innerHTML='<div style="color:#888;font-size:12px">No gaps found.</div>';setFixBtns(true);setFixAllBtns(true);return;}
+  gaps.forEach(function(g){
+    var d=document.createElement('div');d.className='item'+(g.idx===selectedIdx?' selected':'');
+    d.textContent='Gap '+(g.idx+1)+':  '+g.dist_mm.toFixed(4)+' mm';
+    d.onclick=function(){selectGap(g.idx);};list.appendChild(d);
+  });
+  setFixBtns(selectedIdx<0);
+}
+function scan(){
+  var val=parseFloat(document.getElementById('tolVal').value)||0.1;
+  var unit=document.getElementById('tolUnit').value;
+  setGapStatus('Scanning...');
+  adsk.fusionSendData('scan',JSON.stringify({value:val,unit:unit})).then(function(result){
+    var r=JSON.parse(result);
+    if(!r.ok){setGapStatus(r.error,true);return;}
+    if(r.default_unit&&!tolUnitDirty)setDefaultUnit('tolUnit',r.default_unit);
+    gaps=r.gaps;selectedIdx=-1;renderGaps();
+    setGapStatus(gaps.length+' gap(s) found.');setFixAllBtns(gaps.length===0);
+  });
+}
+function selectGap(idx){
+  selectedIdx=idx;renderGaps();setFixBtns(false);
+  adsk.fusionSendData('select',JSON.stringify({idx:idx,show_markers:showMarkers()})).then(function(){});
+}
+function toggleMarkers(){adsk.fusionSendData('toggle_markers',JSON.stringify({show:showMarkers()})).then(function(){});}
+function fixCoincident(){
+  if(selectedIdx<0)return;
+  setGapStatus('Applying coincident constraint...');setFixBtns(true);
+  adsk.fusionSendData('fix_coincident',JSON.stringify({idx:selectedIdx})).then(function(result){
+    var r=JSON.parse(result);
+    if(!r.ok){setGapStatus(r.error,true);setFixBtns(selectedIdx<0);return;}
+    gaps=r.gaps;selectedIdx=-1;renderGaps();setFixAllBtns(gaps.length===0);
+    setGapStatus('Constraint applied. '+gaps.length+' gap(s) remaining.');
+  });
+}
+function fixLine(){
+  if(selectedIdx<0)return;
+  setGapStatus('Bridging gap with line...');setFixBtns(true);
+  adsk.fusionSendData('fix_line',JSON.stringify({idx:selectedIdx})).then(function(result){
+    var r=JSON.parse(result);
+    if(!r.ok){setGapStatus(r.error,true);setFixBtns(selectedIdx<0);return;}
+    gaps=r.gaps;selectedIdx=-1;renderGaps();setFixAllBtns(gaps.length===0);
+    setGapStatus('Line added. '+gaps.length+' gap(s) remaining.');
+  });
+}
+function fixAll(action){
+  if(gaps.length===0)return;
+  var label=action==='fix_all_coincident'?'coincident constraints':'bridge lines';
+  setGapStatus('Applying '+label+' to all '+gaps.length+' gap(s)...');
+  setFixBtns(true);setFixAllBtns(true);
+  adsk.fusionSendData(action,'{}').then(function(result){
+    var r=JSON.parse(result);
+    if(!r.ok){setGapStatus(r.error,true);setFixAllBtns(gaps.length===0);return;}
+    gaps=r.gaps;selectedIdx=-1;renderGaps();setFixAllBtns(gaps.length===0);
+    setGapStatus(r.msg+'. '+gaps.length+' gap(s) remaining.');
+  });
+}
+function scanOverlaps(){
+  setOvlStatus('Scanning...');
+  adsk.fusionSendData('scan_overlaps','{}').then(function(result){
+    var r=JSON.parse(result);
+    if(!r.ok){setOvlStatus(r.error,true);return;}
+    var list=document.getElementById('overlapList');list.innerHTML='';
+    if(!r.overlaps||r.overlaps.length===0){
+      list.innerHTML='<div style="color:#888;font-size:12px">No duplicate curves found.</div>';
+      setOvlStatus('No overlaps found.');return;
+    }
+    r.overlaps.forEach(function(o,i){
+      var d=document.createElement('div');d.className='item';
+      d.textContent=o.curve_type+' - '+o.count+' overlapping curves';
+      d.onclick=function(){selectOverlap(i,d);};list.appendChild(d);
+    });
+    setOvlStatus(r.overlaps.length+' overlap group(s) found.');
+  });
+}
+function selectOverlap(idx,el){
+  document.querySelectorAll('#overlapList .item').forEach(function(e){e.classList.remove('selected');});
+  el.classList.add('selected');
+  adsk.fusionSendData('select_overlap',JSON.stringify({idx:idx})).then(function(){});
+}
+function scanSmall(){
+  var val=parseFloat(document.getElementById('smallVal').value)||0.01;
+  var unit=document.getElementById('smallUnit').value;
+  setSmallStatus('Scanning...');
+  adsk.fusionSendData('scan_small_curves',JSON.stringify({value:val,unit:unit})).then(function(result){
+    var r=JSON.parse(result);
+    if(!r.ok){setSmallStatus(r.error,true);return;}
+    if(r.default_unit&&!smallUnitDirty)setDefaultUnit('smallUnit',r.default_unit);
+    var list=document.getElementById('smallList');list.innerHTML='';
+    if(!r.curves||r.curves.length===0){
+      list.innerHTML='<div style="color:#888;font-size:12px">No small curves found.</div>';
+      setSmallStatus('No small curves found.');return;
+    }
+    r.curves.forEach(function(c){
+      var d=document.createElement('div');d.className='item';
+      d.textContent=c.curve_type+' - '+c.length_mm.toFixed(4)+' mm';
+      d.onclick=function(){selectSmall(c.idx,d);};list.appendChild(d);
+    });
+    setSmallStatus(r.curves.length+' small curve(s) found.');
+  });
+}
+function selectSmall(idx,el){
+  document.querySelectorAll('#smallList .item').forEach(function(e){e.classList.remove('selected');});
+  el.classList.add('selected');
+  adsk.fusionSendData('select_small_curve',JSON.stringify({idx:idx})).then(function(){});
+}
+window.fusionJavaScriptHandler={handle:function(action,data){
+  if(action==='sketch_changed'){
+    gaps=[];selectedIdx=-1;renderGaps();setGapStatus('Sketch changed - click Find Gaps to scan.');
+    document.getElementById('overlapList').innerHTML='';setOvlStatus('');
+    document.getElementById('smallList').innerHTML='';setSmallStatus('');
+    setFixAllBtns(true);
+  }
+  return 'OK';
+}};
+window.addEventListener('load',function(){scan();});
+</script>
+</body>
+</html>

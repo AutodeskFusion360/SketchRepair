@@ -1,0 +1,13 @@
+{
+    "autodeskProduct": "Fusion",
+    "type": "addin",
+    "id": "SketchRepair",
+    "author": "",
+    "description": {
+        "": "Finds gaps between sketch endpoints within a user-defined tolerance."
+    },
+    "version": "1.0.0",
+    "runOnStartup": true,
+    "supportedOS": "windows|mac",
+    "editEnabled": true
+}
